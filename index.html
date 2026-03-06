@@ -10,29 +10,31 @@
     
     <style>
         body { background-color: #f4f7f6; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 20px; }
-        .main-container { margin-top: 20px; }
-        .header-section { background: #ffffff; padding: 25px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); margin-bottom: 25px; border-top: 5px solid #0d6efd; }
+        .header-section { background: #ffffff; padding: 25px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); margin-bottom: 25px; border-top: 5px solid #198754; }
         .filter-label { font-weight: 600; color: #495057; font-size: 0.9rem; margin-bottom: 8px; display: block; }
-        .btn-pdf { background-color: #e63946; color: white; border-radius: 6px; font-size: 0.75rem; padding: 6px 12px; text-decoration: none; font-weight: bold; transition: 0.3s; }
-        .btn-pdf:hover { background-color: #c1121f; color: white; transform: scale(1.05); }
+        .btn-pdf { background-color: #e63946; color: white; border-radius: 6px; font-size: 0.75rem; padding: 6px 12px; text-decoration: none; font-weight: bold; }
+        .btn-pdf:hover { background-color: #c1121f; color: white; }
         table thead { background-color: #212529; color: white; }
-        .table-responsive { border-radius: 8px; overflow: hidden; }
     </style>
 </head>
 <body>
 
-<div class="container-fluid main-container">
+<div class="container-fluid">
     <div class="header-section">
-        <h2 class="text-primary text-center mb-4">Running Sites Search Portal</h2>
+        <h2 class="text-success text-center mb-4">Running Sites Search Portal</h2>
         
         <div class="row g-4 justify-content-center">
             <div class="col-md-4">
-                <label class="filter-label">Filter by TP Scheme:</label>
-                <select id="tpDropdown" class="form-select form-select-lg"><option value="">All Schemes</option></select>
+                <label class="filter-label">1. Select TP Scheme:</label>
+                <select id="tpDropdown" class="form-select form-select-lg">
+                    <option value="">-- All Schemes --</option>
+                </select>
             </div>
             <div class="col-md-4">
-                <label class="filter-label">Filter by Final Plot Number:</label>
-                <select id="plotDropdown" class="form-select form-select-lg"><option value="">All Plot Numbers</option></select>
+                <label class="filter-label">2. Select Plot Number (Filtered):</label>
+                <select id="plotDropdown" class="form-select form-select-lg">
+                    <option value="">-- Select TP First --</option>
+                </select>
             </div>
         </div>
     </div>
@@ -41,10 +43,8 @@
         <div class="card-body p-0">
             <div class="table-responsive">
                 <table id="siteTable" class="table table-hover table-bordered w-100 mb-0">
-                    <thead id="tableHead">
-                        </thead>
-                    <tbody id="tableBody">
-                        </tbody>
+                    <thead id="tableHead"></thead>
+                    <tbody id="tableBody"></tbody>
                 </table>
             </div>
         </div>
@@ -57,73 +57,84 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 
 <script>
-    // 1. Target the CSV file
     const CSV_FILE = 'data.csv'; 
+    let globalData = []; // Store data globally to use in filtering
 
-    // 2. Load and Parse the CSV
     Papa.parse(CSV_FILE, {
         download: true,
         header: true,
         skipEmptyLines: true,
         complete: function(results) {
-            const data = results.data;
+            globalData = results.data;
             const headers = results.meta.fields;
 
-            // Generate Table Headers
+            // Generate Table HTML
             let headHtml = '<tr>';
             headers.forEach(h => headHtml += `<th>${h}</th>`);
             headHtml += '</tr>';
             $('#tableHead').html(headHtml);
 
-            // Generate Rows
             let bodyHtml = '';
-            data.forEach(row => {
+            globalData.forEach(row => {
                 bodyHtml += '<tr>';
                 headers.forEach(h => {
-                    let value = (row[h] || '').toString().trim();
-                    // If cell contains a link, make it a clickable PDF button
-                    if (value.startsWith('http')) {
-                        bodyHtml += `<td class="text-center"><a href="${value}" target="_blank" class="btn-pdf">Open PDF</a></td>`;
+                    let val = (row[h] || '').toString().trim();
+                    if (val.startsWith('http')) {
+                        bodyHtml += `<td class="text-center"><a href="${val}" target="_blank" class="btn-pdf">PDF</a></td>`;
                     } else {
-                        bodyHtml += `<td>${value}</td>`;
+                        bodyHtml += `<td>${val}</td>`;
                     }
                 });
                 bodyHtml += '</tr>';
             });
             $('#tableBody').html(bodyHtml);
 
-            // 3. Initialize the Search/Filter Engine (DataTables)
-            const table = $('#siteTable').DataTable({
-                responsive: true,
-                pageLength: 15,
-                language: { search: "Quick Search:" }
-            });
+            // Initialize DataTable
+            const table = $('#siteTable').DataTable({ responsive: true });
 
-            // 4. Fill the TP Scheme Dropdown
-            const schemes = [...new Set(data.map(item => item['T.P SCHEME NUMBER']))]
-                            .filter(Boolean)
-                            .sort();
+            // Fill TP Dropdown initially
+            const schemes = [...new Set(globalData.map(item => item['T.P SCHEME NUMBER']))].filter(Boolean).sort();
             schemes.forEach(s => $('#tpDropdown').append(`<option value="${s}">${s}</option>`));
 
-            // 5. Fill the Final Plot Number Dropdown (Sorted Ascending)
-            const plots = [...new Set(data.map(item => item['FINAL PLOT NUMBER']))]
-                           .filter(Boolean)
-                           .sort((a, b) => {
-                               // Try numeric sort first, then fallback to alphabetical
-                               return a.localeCompare(b, undefined, {numeric: true, sensitivity: 'base'});
-                           });
-            plots.forEach(p => $('#plotDropdown').append(`<option value="${p}">${p}</option>`));
-
-            // 6. Connect Dropdowns to the Table
+            // --- THE LOGIC FOR DEPENDENT DROPDOWN ---
             $('#tpDropdown').on('change', function() {
-                table.column(7).search(this.value).draw(); // TP Scheme is index 7
+                const selectedTP = this.value;
+                
+                // 1. Filter the table
+                table.column(7).search(selectedTP).draw();
+
+                // 2. Clear and update the Plot Dropdown
+                $('#plotDropdown').html('<option value="">-- All Plots in this TP --</option>');
+                
+                if (selectedTP !== "") {
+                    // Find plots that belong ONLY to the selected TP
+                    const filteredPlots = globalData
+                        .filter(item => item['T.P SCHEME NUMBER'] === selectedTP)
+                        .map(item => item['FINAL PLOT NUMBER'])
+                        .filter(Boolean);
+                    
+                    // Remove duplicates and sort them
+                    const uniquePlots = [...new Set(filteredPlots)].sort((a, b) => 
+                        a.localeCompare(b, undefined, {numeric: true})
+                    );
+
+                    uniquePlots.forEach(p => {
+                        $('#plotDropdown').append(`<option value="${p}">${p}</option>`);
+                    });
+                } else {
+                    $('#plotDropdown').html('<option value="">-- Select TP First --</option>');
+                }
+                
+                // Reset the plot filter on the table when TP changes
+                table.column(8).search('').draw();
             });
+
+            // Filter table when Plot is selected
             $('#plotDropdown').on('change', function() {
-                table.column(8).search(this.value).draw(); // Final Plot Number is index 8
+                table.column(8).search(this.value).draw();
             });
         }
     });
 </script>
-
 </body>
 </html>
