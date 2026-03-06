@@ -3,47 +3,43 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Naranpura Construction Sites Directory</title>
+    <title>Live Construction Directory</title>
     
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
     <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css">
     
     <style>
-        body { background-color: #f4f7f6; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 20px; }
-        .header-section { background: #ffffff; padding: 25px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); margin-bottom: 25px; border-top: 5px solid #198754; }
-        .filter-label { font-weight: 600; color: #495057; font-size: 0.9rem; margin-bottom: 8px; display: block; }
-        .btn-pdf { background-color: #e63946; color: white; border-radius: 6px; font-size: 0.75rem; padding: 6px 12px; text-decoration: none; font-weight: bold; }
-        .btn-pdf:hover { background-color: #c1121f; color: white; }
-        table thead { background-color: #212529; color: white; }
+        body { background-color: #f0f2f5; font-family: 'Segoe UI', sans-serif; padding: 20px; }
+        .header-section { background: white; padding: 25px; border-radius: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); margin-bottom: 25px; }
+        .btn-add { background-color: #0d6efd; color: white; font-weight: bold; border-radius: 8px; margin-bottom: 15px; }
+        .btn-pdf { background-color: #dc3545; color: white; border-radius: 5px; font-size: 0.8rem; padding: 4px 10px; text-decoration: none; }
     </style>
 </head>
 <body>
 
 <div class="container-fluid">
-    <div class="header-section">
-        <h2 class="text-success text-center mb-4">Naranpura Running Sites Record</h2>
+    <div class="header-section text-center">
+        <h2 class="text-dark mb-4">Construction Sites Live Portal</h2>
         
-        <div class="row g-4 justify-content-center">
-            <div class="col-md-4">
-                <label class="filter-label"> Select TP Scheme:</label>
-                <select id="tpDropdown" class="form-select form-select-lg">
-                    <option value="">-- All Schemes --</option>
-                </select>
+        <a href="https://docs.google.com/spreadsheets/d/1uQ8G72VLxvTjmBQKbtY9vjKxMNR6vMswPaoVhWxJzoA/edit?usp=sharing" target="_blank" class="btn btn-add btn-lg px-5">➕ Add New Site Entry</a>
+
+        <div class="row g-3 mt-2">
+            <div class="col-md-5">
+                <label class="fw-bold mb-1">1. Filter by TP Scheme:</label>
+                <select id="tpDropdown" class="form-select form-select-lg"><option value="">-- All Schemes --</option></select>
             </div>
-            <div class="col-md-4">
-                <label class="filter-label"> Select Final Plot Number (Filtered):</label>
-                <select id="plotDropdown" class="form-select form-select-lg">
-                    <option value="">-- Select TP First --</option>
-                </select>
+            <div class="col-md-5">
+                <label class="fw-bold mb-1">2. Filter by Final Plot Number:</label>
+                <select id="plotDropdown" class="form-select form-select-lg"><option value="">-- Select TP First --</option></select>
             </div>
         </div>
     </div>
 
-    <div class="card shadow-sm">
+    <div class="card shadow">
         <div class="card-body p-0">
             <div class="table-responsive">
                 <table id="siteTable" class="table table-hover table-bordered w-100 mb-0">
-                    <thead id="tableHead"></thead>
+                    <thead class="table-dark" id="tableHead"></thead>
                     <tbody id="tableBody"></tbody>
                 </table>
             </div>
@@ -57,28 +53,29 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 
 <script>
-    const CSV_FILE = 'data.csv'; 
-    let globalData = []; // Store data globally to use in filtering
+    // PASTE YOUR PUBLISHED GOOGLE SHEET CSV LINK HERE
+    const GOOGLE_SHEET_CSV_URL = 'PASTE_YOUR_LINK_HERE'; 
 
-    Papa.parse(CSV_FILE, {
+    Papa.parse(GOOGLE_SHEET_CSV_URL, {
         download: true,
         header: true,
-        skipEmptyLines: true,
         complete: function(results) {
-            globalData = results.data;
+            const data = results.data;
             const headers = results.meta.fields;
 
-            // Generate Table HTML
+            // Generate Table Headers
             let headHtml = '<tr>';
             headers.forEach(h => headHtml += `<th>${h}</th>`);
             headHtml += '</tr>';
             $('#tableHead').html(headHtml);
 
+            // Generate Rows
             let bodyHtml = '';
-            globalData.forEach(row => {
+            data.forEach(row => {
+                if(!row[headers[0]]) return; // Skip empty rows
                 bodyHtml += '<tr>';
                 headers.forEach(h => {
-                    let val = (row[h] || '').toString().trim();
+                    let val = (row[h] || '').trim();
                     if (val.startsWith('http')) {
                         bodyHtml += `<td class="text-center"><a href="${val}" target="_blank" class="btn-pdf">PDF</a></td>`;
                     } else {
@@ -89,47 +86,24 @@
             });
             $('#tableBody').html(bodyHtml);
 
-            // Initialize DataTable
             const table = $('#siteTable').DataTable({ responsive: true });
 
-            // Fill TP Dropdown initially
-            const schemes = [...new Set(globalData.map(item => item['T.P SCHEME NUMBER']))].filter(Boolean).sort();
+            // TP Logic
+            const schemes = [...new Set(data.map(item => item['T.P SCHEME NUMBER']))].filter(Boolean).sort();
             schemes.forEach(s => $('#tpDropdown').append(`<option value="${s}">${s}</option>`));
 
-            // --- THE LOGIC FOR DEPENDENT DROPDOWN ---
             $('#tpDropdown').on('change', function() {
                 const selectedTP = this.value;
-                
-                // 1. Filter the table
                 table.column(7).search(selectedTP).draw();
-
-                // 2. Clear and update the Plot Dropdown
+                
                 $('#plotDropdown').html('<option value="">-- All Plots in this TP --</option>');
-                
-                if (selectedTP !== "") {
-                    // Find plots that belong ONLY to the selected TP
-                    const filteredPlots = globalData
-                        .filter(item => item['T.P SCHEME NUMBER'] === selectedTP)
-                        .map(item => item['FINAL PLOT NUMBER'])
-                        .filter(Boolean);
-                    
-                    // Remove duplicates and sort them
-                    const uniquePlots = [...new Set(filteredPlots)].sort((a, b) => 
-                        a.localeCompare(b, undefined, {numeric: true})
-                    );
-
-                    uniquePlots.forEach(p => {
-                        $('#plotDropdown').append(`<option value="${p}">${p}</option>`);
-                    });
-                } else {
-                    $('#plotDropdown').html('<option value="">-- Select TP First --</option>');
+                if (selectedTP) {
+                    const filteredPlots = [...new Set(data.filter(i => i['T.P SCHEME NUMBER'] === selectedTP).map(i => i['FINAL PLOT NUMBER']))].filter(Boolean).sort((a,b)=>a.localeCompare(b, undefined, {numeric:true}));
+                    filteredPlots.forEach(p => $('#plotDropdown').append(`<option value="${p}">${p}</option>`));
                 }
-                
-                // Reset the plot filter on the table when TP changes
                 table.column(8).search('').draw();
             });
 
-            // Filter table when Plot is selected
             $('#plotDropdown').on('change', function() {
                 table.column(8).search(this.value).draw();
             });
